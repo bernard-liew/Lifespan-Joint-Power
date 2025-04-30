@@ -1,0 +1,297 @@
+---
+title: "1_import"
+output: html_notebook
+editor_options: 
+  chunk_output_type: console
+---
+# Import library
+
+```{r}
+rm (list = ls())
+
+# Helper
+library (tidyverse)
+
+# Import
+library (rio)
+
+# Exploration 
+library (DataExplorer)
+library (janitor)
+library (arsenal)
+
+```
+
+# Import data
+
+## Old data
+
+```{r}
+old_dat <- readRDS("../../completed/2020_stairs_biomech/output/df_clean_self_v2.RDS") %>%
+  #filter (study != "lencioni") %>%
+  rename (pow = val) %>%
+  dplyr::select(-c(cond, stplen))
+```
+
+## New data
+
+```{r}
+input_dir <- "data/"
+
+
+list_of_files <- list.files(input_dir, pattern = ".xlsx", recursive = TRUE)
+
+df_list <- rio::import_list(file.path(input_dir, list_of_files), col_names = FALSE)
+names(df_list) <- str_remove(list_of_files, ".xlsx")
+```
+
+# Restruture data
+
+## Adult data
+
+```{r}
+# Demographic
+adult_df_demo <- df_list$`Adults/01_Demo_PhysEx`[-c(1,3),]
+names(adult_df_demo) <- df_list$`Adults/01_Demo_PhysEx`[3,]
+adult_df_demo <- adult_df_demo[,c(1,2,3,4,5)] # men = 0
+names(adult_df_demo) <- c("subj", "age", "sex", "wt", "ht")
+adult_df_demo <- adult_df_demo %>%
+  mutate_at(c("age", "wt", "ht"), as.numeric) %>%
+  mutate (sex = factor (sex, levels = c("1", "0"), labels = c("f", "m")))
+
+# Spatiotemporal
+spat_df_demo <- df_list$`Adults/comf_spatiotemporal` [-1,] 
+names(spat_df_demo) <- df_list$`Adults/comf_spatiotemporal` [1,] 
+spat_df_demo <- janitor::clean_names(spat_df_demo) %>%
+  dplyr::select (na, walking_speed_m_s_mean, r_stride_length_m_mean) %>%
+  rename(subj = na,
+         speed = walking_speed_m_s_mean,
+         strlen = r_stride_length_m_mean) %>%
+  mutate (side = "r") %>%
+  mutate_at(c("speed", "strlen"), as.numeric) 
+
+# Right ankle power flex
+rank_sag <- df_list$`Adults/comf_Power RAnkleFlex`
+names(rank_sag) <- c("subj", paste0(1:100))
+rank_sag <- rank_sag %>%
+  mutate (subj = str_remove (subj, "_.*")) %>%
+  pivot_longer(cols = -subj,
+               names_to = "cycle",
+               values_to = "ank_flex")
+
+# Right ankle power pron
+rank_front <- df_list$`Adults/comf_Power RAnklePron`
+names(rank_front) <- c("subj", paste0(1:100))
+rank_front <- rank_front %>%
+  mutate (subj = str_remove (subj, "_.*")) %>%
+  pivot_longer(cols = -subj,
+               names_to = "cycle",
+               values_to = "ank_front")
+
+#Right ankle power
+
+rank <- rank_sag %>%
+  inner_join(rank_front, by = c("subj", "cycle")) %>%
+  mutate (pow = ank_flex + ank_front,
+          joint = "ankle",
+          side = "r",
+          cycle = as.numeric (cycle)) %>%
+  dplyr::select(subj, cycle, side, joint, pow)
+
+
+# Right knee power flex
+rkne <- df_list$`Adults/comf_Power RKneeFlex`
+names(rkne) <- c("subj", paste0(1:100))
+rkne <- rkne %>%
+  mutate (subj = str_remove (subj, "_.*"),
+          joint = "knee",
+          side = "r") %>%
+  pivot_longer(cols = -c(subj, joint, side),
+               names_to = "cycle",
+               values_to = "pow") %>%
+  mutate (cycle = as.numeric (cycle))
+
+# Right hip frontal
+rhip_front <- df_list$`Adults/comf_Power RHipAbAd`
+names(rhip_front) <- c("subj", paste0(1:100))
+rhip_front <- rhip_front %>%
+  mutate (subj = str_remove (subj, "_.*")) %>%
+  pivot_longer(cols = -subj,
+               names_to = "cycle",
+               values_to = "hip_front")
+
+# Right hip flex
+rhip_flex <- df_list$`Adults/comf_Power RHipFlex`
+names(rhip_flex) <- c("subj", paste0(1:100))
+rhip_flex <- rhip_flex %>%
+  mutate (subj = str_remove (subj, "_.*")) %>%
+  pivot_longer(cols = -subj,
+               names_to = "cycle",
+               values_to = "hip_flex")
+
+# Right hip rotate
+rhip_rot <- df_list$`Adults/comf_Power RHipRot`
+names(rhip_rot) <- c("subj", paste0(1:100))
+rhip_rot <- rhip_rot %>%
+  mutate (subj = str_remove (subj, "_.*")) %>%
+  pivot_longer(cols = -subj,
+               names_to = "cycle",
+               values_to = "hip_rot")
+
+
+#Right hip power
+
+rhip <- rhip_flex %>%
+  inner_join(rhip_front, by = c("subj", "cycle")) %>%
+  inner_join(rhip_rot, by = c("subj", "cycle")) %>%
+  mutate (pow = hip_flex + hip_front + hip_rot,
+          side = "r",
+          joint = "hip",
+          cycle = as.numeric (cycle)) %>%
+  dplyr::select(subj, cycle, side, joint, pow)
+
+adult_data <- bind_rows (rank, rkne, rhip) %>%
+  inner_join(adult_df_demo, by = c("subj")) %>%
+  inner_join(spat_df_demo, by = c("subj", "side"))
+```
+
+
+## Children data
+
+```{r}
+# Demographic
+child_df_demo <- df_list$`Children/01_Demo_PhysEx`[-c(1),]
+names(child_df_demo) <- df_list$`Children/01_Demo_PhysEx`[1,]
+child_df_demo <- child_df_demo[,c(1,2,3,4,5)] # men = 0
+names(child_df_demo) <- c("subj", "age", "sex", "wt", "ht")
+child_df_demo <- child_df_demo %>%
+  mutate_at(c("age", "wt", "ht"), as.numeric) %>%
+  mutate (sex = factor (sex, levels = c("1", "0"), labels = c("f", "m")),
+          subj = paste0("HCC", str_pad(subj,width = 3, side = "left", pad = "0")))
+
+# Spatiotemporal
+spat_df_demo <- df_list$`Children/HCC_spatiotemporal_comf`[-1,] 
+names(spat_df_demo) <- df_list$`Children/HCC_spatiotemporal_comf` [1,] 
+spat_df_demo <- janitor::clean_names(spat_df_demo) %>%
+  dplyr::select (na, walking_speed_m_s_mean, r_stride_length_m_mean) %>%
+  rename(subj = na,
+         speed = walking_speed_m_s_mean,
+         strlen = r_stride_length_m_mean) %>%
+  mutate (side = "r") %>%
+  mutate_at(c("speed", "strlen"), as.numeric) 
+
+# Right ankle power flex
+rank_sag <- df_list$`Children/HCC_Power RAnkleFlex_comf` 
+names(rank_sag) <- c("subj", paste0(1:100))
+rank_sag <- rank_sag %>%
+  group_by(subj) %>%
+  filter (row_number()==1) %>%
+  mutate (subj = str_remove (subj, "_.*")) %>%
+  pivot_longer(cols = -subj,
+               names_to = "cycle",
+               values_to = "ank_flex")
+
+# Right ankle power pron
+rank_front <- df_list$`Children/HCC_Power RAnklePron_comf`
+names(rank_front) <- c("subj", paste0(1:100))
+rank_front <- rank_front %>%
+  group_by(subj) %>%
+  filter (row_number()==1) %>%
+  mutate (subj = str_remove (subj, "_.*")) %>%
+  pivot_longer(cols = -subj,
+               names_to = "cycle",
+               values_to = "ank_front")
+
+#Right ankle power
+
+rank <- rank_sag %>%
+  inner_join(rank_front, by = c("subj", "cycle")) %>%
+  mutate (pow = ank_flex + ank_front,
+          joint = "ankle",
+          side = "r",
+          cycle = as.numeric (cycle)) %>%
+  dplyr::select(subj, cycle, side, joint, pow)
+
+
+# Right knee power flex
+rkne <- df_list$`Children/HCC_Power RKneeFlex_comf`
+names(rkne) <- c("subj", paste0(1:100))
+rkne <- rkne %>%
+  group_by(subj) %>%
+  filter (row_number()==1) %>%
+  mutate (subj = str_remove (subj, "_.*"),
+          joint = "knee",
+          side = "r") %>%
+  pivot_longer(cols = -c(subj, joint, side),
+               names_to = "cycle",
+               values_to = "pow") %>%
+  mutate (cycle = as.numeric (cycle))
+
+# Right hip frontal
+rhip_front <- df_list$`Children/HCC_Power RHipAbAd_comf`
+names(rhip_front) <- c("subj", paste0(1:100))
+rhip_front <- rhip_front %>%
+  mutate (subj = str_remove (subj, "_.*")) %>%
+  group_by(subj) %>%
+  filter (row_number()==1) %>%
+  pivot_longer(cols = -subj,
+               names_to = "cycle",
+               values_to = "hip_front")
+
+# Right hip flex
+rhip_flex <- df_list$`Children/HCC_Power RHipFlex_comf`
+names(rhip_flex) <- c("subj", paste0(1:100))
+rhip_flex <- rhip_flex %>%
+  mutate (subj = str_remove (subj, "_.*")) %>%
+  group_by(subj) %>%
+  filter (row_number()==1) %>%
+  pivot_longer(cols = -subj,
+               names_to = "cycle",
+               values_to = "hip_flex")
+
+# Right hip rotate
+rhip_rot <- df_list$`Children/HCC_Power RHipRot_comf`
+names(rhip_rot) <- c("subj", paste0(1:100))
+rhip_rot <- rhip_rot %>%
+  mutate (subj = str_remove (subj, "_.*")) %>%
+  group_by(subj) %>%
+  filter (row_number()==1) %>%
+  pivot_longer(cols = -subj,
+               names_to = "cycle",
+               values_to = "hip_rot")
+
+
+#Right hip power
+
+rhip <- rhip_flex %>%
+  inner_join(rhip_front, by = c("subj", "cycle")) %>%
+  inner_join(rhip_rot, by = c("subj", "cycle")) %>%
+  mutate (pow = hip_flex + hip_front + hip_rot,
+          side = "r",
+          joint = "hip",
+          cycle = as.numeric (cycle)) %>%
+  dplyr::select(subj, cycle, side, joint, pow)
+
+child_data <- bind_rows (rank, rkne, rhip) %>%
+  inner_join(child_df_demo, by = c("subj")) %>%
+  inner_join(spat_df_demo, by = c("subj", "side"))
+```
+
+## Merge data
+
+```{r}
+new_dat <- bind_rows(adult_data, child_data) %>%
+  mutate (study = "senden")%>%
+  dplyr::select(-side)
+
+comb_dat <- bind_rows(new_dat, old_dat) %>%
+  mutate (subj = factor (subj),
+          study = factor (study))
+
+comb_dat %>%
+  group_by(study) %>%
+  summarise (u = n_distinct(subj))
+
+saveRDS(comb_dat, "output/combined_data.RDS")
+
+```

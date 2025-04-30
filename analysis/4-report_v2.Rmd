@@ -1,0 +1,326 @@
+---
+title: "3-model"
+output: html_notebook
+editor_options: 
+  chunk_output_type: console
+---
+# Import library
+
+```{r}
+rm (list = ls())
+
+# Helper
+library (tidyverse)
+
+# Statistics
+library (gamlss)
+library (gamlss.add)
+library(gamlss.dist)
+library (mgcv)
+library (gratia)
+library (viridis)
+library (refund)
+library (cowplot)
+```
+
+# Import
+
+```{r}
+pffr_res <- readRDS ("output/pffr_res.RDS")
+list2env(pffr_res,globalenv())
+
+df <- readRDS ("output/combined_data.RDS") 
+  #filter (study != "lencioni") 
+
+df <- df %>%
+  mutate (age2 = case_when(
+    age %in% c(3:5) ~ "<6yo",
+    age %in% c(6:9) ~ "6-9yo",
+    age %in% c(10:19) ~ "10+yo",
+    age %in% c(20:29) ~ "20+yo",
+    age %in% c(30:39) ~ "30+yo",
+    age %in% c(40:49) ~ "40+yo",
+    age %in% c(50:59) ~ "50+yo",
+    age %in% c(60:69) ~ "60+yo",
+    age %in% c(70:79) ~ "70+yo",
+    TRUE ~ "80+yo"
+  ))
+```
+
+# Create new data 
+
+```{r}
+new_data <- df %>%
+  dplyr::select (age2, ht, speed, strlen) %>%
+  group_by(age2) %>%
+  summarise(ht = mean (ht, na.rm = TRUE),
+            speed = mean (speed, na.rm = TRUE),
+            strlen = mean (strlen, na.rm = TRUE)) %>%
+  mutate_if (is.numeric, round, 2) %>%
+  slice(-9) %>%
+  mutate(sex = factor ("m"),
+         study = factor("senden"),
+         age = c(10, 20, 30, 40, 50, 60, 70, 80, 5))
+
+new_data <- bind_rows(new_data, new_data, new_data)
+new_data$speed <- rep (c(0.8, 1.2, 1.4), each = 9)
+  
+```
+
+
+# Analysis of ankle power
+
+```{r}
+
+newdata <- new_data %>%
+  as.list()
+  
+
+pred_ank <- predict (mod_ank, newdata = newdata,
+                     type = "response", se.fit = TRUE, exclude = c("s(study)", "sex"))
+
+pred_ank2 <- bind_cols(newdata) %>%
+  bind_cols(data.frame (pred_ank$fit)) %>%
+  pivot_longer(cols = starts_with("X"),
+               names_to = "cycle",
+               values_to = "fit") %>%
+  mutate (cycle = str_remove(cycle, "X") %>% as.numeric)
+
+pred_ank3 <- bind_cols(newdata) %>%
+  bind_cols(data.frame (pred_ank$se.fit)) %>%
+  pivot_longer(cols = starts_with("X"),
+               names_to = "cycle",
+               values_to = "se") %>%
+  mutate (cycle = str_remove(cycle, "X") %>% as.numeric,
+          fit = pred_ank2$fit,
+          lb = fit - 1.96 *se,
+          ub = fit + 1.96*se,
+          cycle = rep(25:75, nrow(.)/length (25:75)))
+
+
+#A1: a region of negative power, corresponding to eccentric plantar flexor activity at the ankle during midstance and terminal stance.
+
+a1 <-pred_ank3 %>%
+  group_by(age, speed) %>%
+  slice_min (fit)  %>%
+  mutate (speed = factor (speed))
+
+# A2: a region of positive power, corresponding to the concentric burst of propulsive plantar flexor activity during preswing.
+a2 <-pred_ank3 %>%
+  group_by(age, speed) %>%
+  slice_max (fit)  %>%
+  mutate (speed = factor (speed))
+
+```
+
+
+# Analysis of knee power
+
+```{r}
+
+pred_kne <- predict (mod_kne, newdata = newdata,
+                     type = "response", se.fit = TRUE, exclude = c("s(study)", "sex"))
+
+pred_kne2 <- bind_cols(newdata) %>%
+  bind_cols(data.frame (pred_kne$fit)) %>%
+  pivot_longer(cols = starts_with("X"),
+               names_to = "cycle",
+               values_to = "fit") %>%
+  mutate (cycle = str_remove(cycle, "X") %>% as.numeric)
+
+pred_kne3 <- bind_cols(newdata) %>%
+  bind_cols(data.frame (pred_kne$se.fit)) %>%
+  pivot_longer(cols = starts_with("X"),
+               names_to = "cycle",
+               values_to = "se") %>%
+  mutate (cycle = str_remove(cycle, "X") %>% as.numeric,
+          fit = pred_kne2$fit,
+          lb = fit - 1.96 *se,
+          ub = fit + 1.96*se)
+
+
+# K1:  a region of negative power, corresponding to eccentric knee extensor activity at during loading response.
+k1 <- pred_kne3 %>%
+  filter (cycle <= 20) %>%
+  group_by(age, speed) %>%
+  slice_min (fit)  %>%
+  mutate (speed = factor (speed))
+
+# K2:  a region of positive power, corresponding to concentric knee extensor activity during midstance
+k2 <- pred_kne3 %>%
+  filter (cycle > 10 & cycle < 40) %>%
+  group_by(age, speed) %>%
+  slice_max (fit)  %>%
+  mutate (speed = factor (speed))
+
+
+# K3:  a region of negative power, corresponding to eccentric activity in the rectus femoris during preswing
+k3 <- pred_kne3 %>%
+  filter (cycle > 50 & cycle < 70) %>%
+  group_by(age, speed) %>%
+  slice_min (fit)  %>%
+  mutate (speed = factor (speed))
+
+# K4:   a region of negative power, corresponding to eccentric activity in the hamstrings during terminal swing.
+k4 <- pred_kne3 %>%
+  filter (cycle > 70) %>%
+  group_by(age, speed) %>%
+  slice_min (fit)  %>%
+  mutate (speed = factor (speed))
+
+
+
+```
+
+
+# Analysis of hip power
+
+```{r}
+
+pred_hip <- predict (mod_hip, newdata = newdata,
+                     type = "response", se.fit = TRUE, exclude = c("s(study)", "sex"))
+
+pred_hip2 <- bind_cols(newdata) %>%
+  bind_cols(data.frame (pred_hip$fit)) %>%
+  pivot_longer(cols = starts_with("X"),
+               names_to = "cycle",
+               values_to = "fit") %>%
+  mutate (cycle = str_remove(cycle, "X") %>% as.numeric)
+
+pred_hip3 <- bind_cols(newdata) %>%
+  bind_cols(data.frame (pred_hip$se.fit)) %>%
+  pivot_longer(cols = starts_with("X"),
+               names_to = "cycle",
+               values_to = "se") %>%
+  mutate (cycle = str_remove(cycle, "X") %>% as.numeric,
+          fit = pred_hip2$fit,
+          lb = fit - 1.96 *se,
+          ub = fit + 1.96*se)
+
+# H1:  a small region of positive power, not always present, which corresponds to concentric hip extensor activity during loading response.
+
+h1 <- pred_hip3 %>%
+  filter (cycle <= 40) %>%
+  group_by(age, speed) %>%
+  slice_max (fit)  %>%
+  mutate (speed = factor (speed))
+
+# H2:  a region of negative power, corresponding to eccentric hip flexor activity during midstance.
+
+h2 <-  pred_hip3 %>%
+  filter (cycle > 40 & cycle <60) %>%
+  group_by(age, speed) %>%
+  slice_min (fit)  %>%
+  mutate (speed = factor (speed))
+
+# H3:  a region of positive power, corresponding to concentric activity in the hip flexors during preswing and intial swing.
+h3 <- pred_hip3 %>%
+  filter (cycle > 50 & cycle < 80) %>%
+  group_by(age, speed) %>%
+  slice_max (fit)  %>%
+  mutate (speed = factor (speed))
+
+```
+
+# Report
+
+## Primary outcomes
+
+```{r}
+a2 %>%
+  filter (speed == 1.2) %>%
+  ungroup () %>%
+  slice_min (fit)
+
+a2 %>%
+  filter (speed == 1.2) %>%
+  ungroup () %>%
+  slice_max (fit)
+
+a2 %>%
+  mutate (age = as.numeric (age)) %>%
+  filter (age >3) %>%
+  filter (speed == 1.2) %>%
+  ungroup () %>%
+  slice_min (fit)
+
+h1 %>%
+  filter (speed == 1.2) %>%
+  ungroup () %>%
+  slice_min (fit)
+
+
+h3 %>%
+  filter (speed == 1.2) %>%
+  ungroup () %>%
+  slice_min (fit)
+
+h3 %>%
+  filter (speed == 1.2) %>%
+  ungroup () %>%
+  slice_max (fit)
+
+```
+
+
+## Secondary outcomes
+
+```{r}
+a1 %>%
+  group_by(speed) %>%
+  mutate (age = as.numeric (age)) %>%
+  filter (age == 2)
+
+a1 %>%
+  filter (speed == "0.8") %>%
+  mutate (age = as.numeric (age)) %>%
+  
+  ungroup () %>%
+  slice_min (fit)
+
+k2 %>%
+  filter (speed == 1.2) %>%
+  ungroup () %>%
+  slice_min (fit)
+
+k2 %>%
+  filter (speed == 1.2) %>%
+  ungroup () %>%
+  slice_max (fit)
+
+k2 %>%
+  filter (speed == 0.8) %>%
+  ungroup () %>%
+  slice_max (fit)
+
+h1 %>%
+  filter (speed == 1.2) %>%
+  ungroup () %>%
+  slice_min (fit)
+
+h1 %>%
+  filter (speed == 1.2) %>%
+  ungroup () %>%
+  filter (age == 50)
+
+h1 %>%
+  filter (speed == 1.2) %>%
+  ungroup () %>%
+  filter (age == 80)
+
+h3 %>%
+  filter (speed == 1.2) %>%
+  ungroup () %>%
+  slice_min (fit)
+
+h3 %>%
+  filter (speed == 1.2) %>%
+  ungroup () %>%
+  slice_max (fit)
+
+h3 %>%
+  filter (speed == 1.4) %>%
+  ungroup () %>%
+  slice_max (fit)
+
+```
