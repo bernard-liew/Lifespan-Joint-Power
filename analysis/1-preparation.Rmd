@@ -27,7 +27,7 @@ library (arsenal)
 ## Old data
 
 ```{r}
-old_dat <- readRDS("../../completed/2020_stairs_biomech/output/df_clean_self_v2.RDS") %>%
+old_dat <- readRDS("../../../completed/2020_stairs_biomech/output/df_clean_self_v2.RDS") %>%
   #filter (study != "lencioni") %>%
   rename (pow = val) %>%
   dplyr::select(-c(cond, stplen))

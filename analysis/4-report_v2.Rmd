@@ -21,6 +21,7 @@ library (gratia)
 library (viridis)
 library (refund)
 library (cowplot)
+library (FoSIntro)
 ```
 
 # Import
@@ -324,3 +325,174 @@ h3 %>%
   slice_max (fit)
 
 ```
+
+# Report coefficients
+
+```{r}
+plot_2Dheatmap_custom <- 
+  function (model, 
+            plot_ci = TRUE, 
+            alpha = 0.05, 
+            select, 
+            lowCol = "red", 
+            highCol = "blue", 
+            legend_position = "right", 
+            xlab, 
+            ylab, 
+            base_size = 11, 
+            outer_fontsize = 15) 
+{
+
+  plotObject <- FoSIntro:::no.plot(model)
+  plotObject <- plotObject[[select]]
+  plot_data <- expand.grid(plotObject$x, plotObject$y)
+  plot_data$fit <- as.vector(plotObject$fit)
+
+  plot_data$ci_lower <- plot_data$fit - qnorm(1 - alpha/2) * 
+    as.vector(plotObject$se)
+  plot_data$ci_upper <- plot_data$fit + qnorm(1 - alpha/2) * 
+    as.vector(plotObject$se)
+
+  xlab <- ifelse(missing(xlab), plotObject$xlab, xlab)
+  ylab <- ifelse(missing(ylab), plotObject$ylab, ylab)
+
+  legend_limits <- c(min(plot_data$ci_lower, na.rm = T), 
+                            max(plot_data$ci_upper, na.rm = T))
+
+  gg_fit <- ggplot(plot_data) + 
+    geom_tile(aes(x = Var1, y = Var2, 
+                  fill = fit)) + 
+    xlab(xlab) + 
+    ylab("") + 
+    scale_x_continuous(expand = c(0, 0)) + 
+    scale_y_continuous(expand = c(0, 0)) + 
+    scale_fill_gradient2(limits = legend_limits,low = lowCol, mid = "white", high = highCol, name = "Joint power (W/kg)") + 
+    geom_contour(aes(x = Var1, y = Var2, z = fit), 
+                 colour = "darkgrey") + 
+    theme_bw(base_size) + 
+    theme(plot.title = element_text(hjust = 0.5),legend.position = legend_position)+
+    guides (z = "none")
+  
+
+    gg_lower <- ggplot(plot_data) + 
+      geom_tile(aes(x = Var1, y = Var2, 
+                    fill = ci_lower)) + 
+      xlab(xlab) + 
+      ylab("") + 
+      scale_x_continuous(expand = c(0, 0)) + 
+      scale_y_continuous(expand = c(0, 0)) + 
+      scale_fill_gradient2(limits = legend_limits,low = lowCol, mid = "white", high = highCol, name = "Joint power (W/kg)") + 
+      geom_contour(aes(x = Var1, y = Var2, z = ci_lower), 
+                   colour = "darkgrey") + 
+      theme_bw(base_size) + 
+      theme(plot.title = element_text(hjust = 0.5),legend.position = legend_position) +
+      guides (z = "none")
+    
+    gg_upper <- ggplot(plot_data) + 
+      geom_tile(aes(x = Var1, y = Var2, 
+                    fill = ci_upper)) + 
+      xlab(xlab) + 
+      ylab("") + 
+      scale_x_continuous(expand = c(0, 0)) + 
+      scale_y_continuous(expand = c(0, 0)) + 
+      scale_fill_gradient2(limits = legend_limits,low = lowCol, mid = "white", high = highCol, name = "Joint power (W/kg)") + 
+      geom_contour(aes(x = Var1, y = Var2, z = ci_upper), 
+                   colour = "darkgrey") + 
+      theme_bw(base_size) + 
+      theme(plot.title = element_text(hjust = 0.5),legend.position = legend_position) +
+      guides (z = "none")
+    
+        # arrange the three plots in a single row
+        prow <- plot_grid(
+          gg_lower + theme(legend.position="none"),
+          gg_fit + theme(legend.position="none"),
+          gg_upper + theme(legend.position="none"),
+          align = 'vh',
+          labels = c("a", "b", "c"),
+          hjust = -1,
+          nrow = 1
+        )
+        
+        legend = get_legend(
+          gg_upper + theme(legend.box.margin = margin(0, 0, 0, 12))
+        )
+        
+        gg <- plot_grid(prow, legend, rel_widths = c(3, .4))
+        
+        return(gg)
+}
+
+plot_1D_custom <- 
+  function (model, 
+            plot_ci = TRUE, 
+            alpha = 0.05, 
+            select, 
+            xlab, 
+            ylab, 
+            base_size = 11, 
+            outer_fontsize = 15) 
+{
+
+  plotObject <- FoSIntro:::no.plot(model)
+  plotObject <- plotObject[[select]]
+  plot_data <- expand.grid(plotObject$x, plotObject$y)
+  plot_data$fit <- as.vector(plotObject$fit)
+
+  plot_data$ci_lower <- plot_data$fit - qnorm(1 - alpha/2) * 
+    as.vector(plotObject$se)
+  plot_data$ci_upper <- plot_data$fit + qnorm(1 - alpha/2) * 
+    as.vector(plotObject$se)
+
+  xlab <- ifelse(missing(xlab), plotObject$xlab, xlab)
+  ylab <- ifelse(missing(ylab), plotObject$ylab, ylab)
+
+  gg <- ggplot(plot_data) + 
+    geom_line (aes(x = Var1, y = fit)) + 
+    geom_ribbon(aes(x = Var1, ymin = ci_lower, ymax = ci_upper), alpha = 0.4) + 
+    xlab(xlab) + 
+    ylab(ylab) + 
+    theme_bw(base_size) 
+
+  return(gg)
+}
+
+```
+
+```{r}
+# Ankle
+formula (mod_ank)
+
+f3 <- plot_2Dheatmap_custom(mod_ank, 
+               select = 3,
+               xlab = "Age (years)",
+               ylab = "Gait cycle (%)") +
+  theme_cowplot()
+
+f4 <- plot_2Dheatmap_custom(mod_ank, 
+               select = 4,
+               xlab = "Speed (m/s)",
+               ylab = "Gait cycle (%)") +
+  theme_cowplot()
+
+f5 <- plot_2Dheatmap_custom(mod_ank, 
+               select = 5,
+               xlab = "Age (years)",
+               ylab = "Speed (m/s)") +
+  theme_cowplot()
+
+# Issues with model terms 6 and 7
+# Speed
+f6 <- plot_1D_custom(mod_ank, 
+               select = 6,
+               xlab = "Gait cycle (%)",
+               ylab = "Joint power (W/kg)") +
+  theme_cowplot()
+
+# Stride length
+f7 <- plot_1D_custom(mod_ank, 
+               select = 7,
+               xlab = "Gait cycle (%)",
+               ylab = "Joint power (W/kg)") +
+  theme_cowplot()
+```
+
