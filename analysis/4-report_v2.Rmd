@@ -77,7 +77,7 @@ newdata <- new_data %>%
   as.list()
   
 
-pred_ank <- predict (mod_ank, newdata = newdata,
+pred_ank <- predict (mod_hip, newdata = newdata,
                      type = "response", se.fit = TRUE, exclude = c("s(study)", "sex"))
 
 pred_ank2 <- bind_cols(newdata) %>%
@@ -378,7 +378,7 @@ plot_2Dheatmap_custom <-
       geom_tile(aes(x = Var1, y = Var2, 
                     fill = ci_lower)) + 
       xlab(xlab) + 
-      ylab("") + 
+      ylab(ylab) + 
       scale_x_continuous(expand = c(0, 0)) + 
       scale_y_continuous(expand = c(0, 0)) + 
       scale_fill_gradient2(limits = legend_limits,low = lowCol, mid = "white", high = highCol, name = "Joint power (W/kg)") + 
@@ -408,7 +408,6 @@ plot_2Dheatmap_custom <-
           gg_fit + theme(legend.position="none"),
           gg_upper + theme(legend.position="none"),
           align = 'vh',
-          labels = c("a", "b", "c"),
           hjust = -1,
           nrow = 1
         )
@@ -458,6 +457,8 @@ plot_1D_custom <-
 
 ```
 
+## Ankle
+
 ```{r}
 # Ankle
 formula (mod_ank)
@@ -485,14 +486,124 @@ f5 <- plot_2Dheatmap_custom(mod_ank,
 f6 <- plot_1D_custom(mod_ank, 
                select = 6,
                xlab = "Gait cycle (%)",
-               ylab = "Joint power (W/kg)") +
+               ylab = "Beta joint power (W/kg)") +
   theme_cowplot()
 
 # Stride length
 f7 <- plot_1D_custom(mod_ank, 
                select = 7,
                xlab = "Gait cycle (%)",
-               ylab = "Joint power (W/kg)") +
+               ylab = "Beta joint power (W/kg)") +
   theme_cowplot()
+top_row = plot_grid (f3, f4, f5, labels = c("a", "b", "c"), ncol =1)
+bottom_row <- plot_grid (f6, f7, labels = c("d", "e"), nrow = 1)
+
+p <- plot_grid(top_row, bottom_row, label_size = 12, 
+          rel_heights = c(3, 1), 
+          ncol = 1)
+
+tiff ("../manuscript/figsm3.tiff", height = 15, width = 10, res = 200, unit = "in")
+  p
+dev.off()
 ```
 
+
+## Knee
+
+```{r}
+formula (mod_kne)
+
+f3 <- plot_2Dheatmap_custom(mod_kne, 
+               select = 3,
+               xlab = "Age (years)",
+               ylab = "Gait cycle (%)") +
+  theme_cowplot()
+
+f4 <- plot_2Dheatmap_custom(mod_kne, 
+               select = 4,
+               xlab = "Speed (m/s)",
+               ylab = "Gait cycle (%)") +
+  theme_cowplot()
+
+f5 <- plot_2Dheatmap_custom(mod_kne, 
+               select = 5,
+               xlab = "Age (years)",
+               ylab = "Speed (m/s)") +
+  theme_cowplot()
+
+# Issues with model terms 6 and 7
+# Speed
+f6 <- plot_1D_custom(mod_kne, 
+               select = 6,
+               xlab = "Gait cycle (%)",
+               ylab = "Beta joint power (W/kg)") +
+  theme_cowplot()
+
+# Stride length
+f7 <- plot_1D_custom(mod_kne, 
+               select = 7,
+               xlab = "Gait cycle (%)",
+               ylab = "Beta joint power (W/kg)") +
+  theme_cowplot()
+top_row = plot_grid (f3, f4, f5, labels = c("a", "b", "c"), ncol =1)
+bottom_row <- plot_grid (f6, f7, labels = c("d", "e"), nrow = 1)
+
+p <- plot_grid(top_row, bottom_row, label_size = 12, 
+          rel_heights = c(3, 1), 
+          ncol = 1)
+
+tiff ("../manuscript/figsm4.tiff", height = 15, width = 10, res = 200, unit = "in")
+  p
+dev.off()
+```
+
+
+## Hip
+
+```{r}
+# Ankle
+formula (mod_hip)
+
+f3 <- plot_2Dheatmap_custom(mod_hip, 
+               select = 3,
+               xlab = "Age (years)",
+               ylab = "Gait cycle (%)") +
+  theme_cowplot()
+
+f4 <- plot_2Dheatmap_custom(mod_kne, 
+               select = 4,
+               xlab = "Speed (m/s)",
+               ylab = "Gait cycle (%)") +
+  theme_cowplot()
+
+f5 <- plot_2Dheatmap_custom(mod_hip, 
+               select = 5,
+               xlab = "Age (years)",
+               ylab = "Speed (m/s)") +
+  theme_cowplot()
+
+# Issues with model terms 6 and 7
+# Speed
+f6 <- plot_1D_custom(mod_hip, 
+               select = 6,
+               xlab = "Gait cycle (%)",
+               ylab = "Beta joint power (W/kg)") +
+  theme_cowplot()
+
+# Stride length
+f7 <- plot_1D_custom(mod_hip, 
+               select = 7,
+               xlab = "Gait cycle (%)",
+               ylab = "Beta joint power (W/kg)") +
+  theme_cowplot()
+top_row = plot_grid (f3, f4, f5, labels = c("a", "b", "c"), ncol =1)
+bottom_row <- plot_grid (f6, f7, labels = c("d", "e"), nrow = 1)
+
+p <- plot_grid(top_row, bottom_row, label_size = 12, 
+          rel_heights = c(3, 1), 
+          ncol = 1)
+
+tiff ("../manuscript/figsm5.tiff", height = 15, width = 10, res = 200, unit = "in")
+  p
+dev.off()
+```
